@@ -29,13 +29,21 @@ class PostAPIView(APIView):
     def get(self, request, pk=None):
         if pk:
             post = Post.objects.filter(id=pk, is_active=True).first()
+
             if not post:
                 return Response({"message": "Post doesn't exist!"}, status=status.HTTP_400_BAD_REQUEST)
+            
+            if request.user != post.author or is_admin(request.user.id):
+                return Response({"message": "You are not authorized to view this post."}, status=status.HTTP_400_BAD_REQUEST)
+
             serializer = PostSerializer(post)
             return Response(serializer.data, status.HTTP_200_OK)
         else:
             print("get all posts")
             posts = Post.objects.filter(is_active=True)
+            if not is_admin(request.user.id):
+                posts = posts.filter(author=request.user)
+
             serializer = PostSerializer(posts, many=True)
 
             return Response(serializer.data, status=status.HTTP_200_OK)
@@ -47,14 +55,8 @@ class PostAPIView(APIView):
         else:
             data = json.loads(request.body)
             user_id = data.get("author")
-            if user_id and is_admin(user_id):
-                
-                serialzer = PostSerializer(request.data)
-                return Response({"message": "Post created successfully!"}, status=status.HTTP_201_CREATED)
-            
-            elif user_id and not is_admin(user_id):
+            if user_id and request.user.id != user_id:
                 return Response({"message": "You are not authorized to create posts for other user!"}, status=status.HTTP_401_UNAUTHORIZED)
-
             else:
                 data=request.data
                 data["author"] = request.user.id
@@ -72,6 +74,9 @@ class PostAPIView(APIView):
         print("Received Put")
         post = Post.objects.get(id=pk)
         
+        if request.user != post.author or is_admin(request.user.id):
+            return Response({"message": "You are not authorized to modify this post."}, status=status.HTTP_400_BAD_REQUEST)
+
         data = request.data
         data["author"] = post.author.id
 
@@ -84,6 +89,9 @@ class PostAPIView(APIView):
 
     def delete(self, request, pk):
         post = Post.objects.get(id=pk)
+        if request.user != post.author or is_admin(request.user.id):
+            return Response({"message": "You are not authorized to modify this post."}, status=status.HTTP_400_BAD_REQUEST)
+
         print("Received delete")
         data = request.data.copy()
         data["is_active"] = False
